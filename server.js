@@ -1,63 +1,85 @@
-// server.js
-const express = require("express");
-const redis = require("redis");
+// Import required modules
+import express from "express";
+import { createClient } from "redis";
 
+// Initialize Express app
 const app = express();
-const redisClient = redis.createClient();
+const port = 3000;
 
-redisClient.on("error", (err) => {
-  console.error("Redis connection error:", err);
-});
+// Create Redis client
+const redisClient = createClient();
 
-redisClient.on("connect", () => {
-  console.log("Connected to Redis");
-});
+redisClient.on("error", (err) => console.error("Redis Client Error:", err));
 
-
-// Middleware function to check Redis cache
-function cache(req, res, next) {
-  if (!redisClient || !redisClient.connect) {
-    return next(); // Skip cache if Redis is not connected
-  }
-
-  redisClient.get("data", (err, data) => {
-    if (err) throw err;
-
-    if (data) {
-      res.status(200).json(JSON.parse(data));
-    } else {
-      next();
-    }
-  });
+// Connect Redis client
+async function connectRedis() {
+  await redisClient.connect();
 }
 
-// Routes
-app.get("/api/data", cache, (req, res) => {
+connectRedis();
+
+// Middleware to parse JSON request bodies
+app.use(express.json());
+
+// Route to set a key-value pair in Redis
+app.post("/set", async (req, res) => {
+  let { key, value } = req.body;
+  key = "hell";
+  value = "yeah";
+  if (!key || !value) {
+    return res.status(400).json({ message: "Key and value are required" });
+  }
+
   try {
-    const apiResponse = { message: "This is some data from the API" };
+    await redisClient.set(key, value);
+    res.status(200).json({ message: `Key "${key}" set successfully!` });
+  } catch (err) {
+    res.status(500).json({ message: "Error setting key", error: err.message });
+  }
+});
+app.get("/set", async (req, res) => {
+  let key = "hell2";
+  let value = "yeah2";
+  if (!key || !value) {
+    return res.status(400).json({ message: "Key and value are required" });
+  }
 
-    // Set Redis cache for the response (expires in 60 seconds)
-    redisClient.setEx("data", 60, JSON.stringify(apiResponse), (err, reply) => {
-      if (err) {
-        console.error("Redis setEx error:", err); // Log Redis errors
-        return res.status(500).json({ error: "Internal Server Error" });
-      }
-    });
-
-    res.status(200).json(apiResponse);
-  } catch (error) {
-    console.error("Error in /api/data route:", error); // Log server errors
-    res.status(500).json({ error: "Internal Server Error" });
+  try {
+    await redisClient.set(key, value);
+    res.status(200).json({ message: `Key "${key}" set successfully!` });
+  } catch (err) {
+    res.status(500).json({ message: "Error setting key", error: err.message });
   }
 });
 
-
-const PORT = process.env.PORT || 3000;
-
-if (process.env.NODE_ENV !== "test") {
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
+async function cache(req, res, next) {
+  const { key } = req.params;
+  console.log("hi");
+  console.log(redisClient.get);
+  const data = await redisClient.get(key);
+  if (!data) {
+    next();
+  } else {
+    res.send(data);
+  }
 }
+// Route to get a value by key from Redis
+app.get("/get/:key", cache, async (req, res) => {
+  const { key } = req.params;
+  console.log("nope");
+  try {
+    //request to db to retrieve data and then saving that to redisClient for live memory
+    //query to DB
+    //redisClient.set(key, data(data from query to DB ))
+    res.status(200).json({ key, value });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ message: "Error retrieving key", error: err.message });
+  }
+});
 
-module.exports = app;
+// Start the Express server
+app.listen(port, () => {
+  console.log(`Server running on http://localhost:${port}`);
+});
